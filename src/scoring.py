@@ -13,6 +13,8 @@ FEATURE_WEIGHTS = {
     "reward_bait": 15,
     "grammar_issues": 10,
     "has_url": 10,
+    "fee_bait": 10,
+    "url_suspicious": 10,
 }
 
 # Risk level thresholds
@@ -44,8 +46,11 @@ def score_risk(features: dict) -> Tuple[int, str, str]:
             score += weight
             active_features += 1
     
-    # Cap at 100
-    score = min(score, 100)
+    # Add url_bonus directly (can be positive or negative)
+    score += features.get("url_bonus", 0)
+    
+    # Clamp to 0-100
+    score = max(0, min(score, 100))
     
     # Determine label based on thresholds
     if score >= THRESHOLDS["high"]:

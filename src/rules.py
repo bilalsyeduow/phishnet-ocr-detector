@@ -46,9 +46,33 @@ SLANG_PATTERNS = [
     "asap", "b4", "2day", "4u", "cuz", "bcuz", "thru"
 ]
 
+# --- URL / domain heuristics (modern phishing) ---
+URL_PATH_KEYWORDS = [
+    "verify", "login", "update", "confirm", "secure", "account", "payment", "unlock"
+]
+
+SUSPICIOUS_TLDS = [
+    ".xyz", ".top", ".site", ".click", ".icu", ".monster", ".zip", ".mov"
+]
+
+SHORTENERS = [
+    "bit.ly", "tinyurl.com", "t.co", "cutt.ly", "rebrand.ly", "is.gd", "rb.gy"
+]
+
+# --- Money/fee bait (very common in delivery scams) ---
+FEE_WORDS = [
+    "fee", "payment", "pay", "charged", "charge", "re-delivery", "redelivery",
+    "delivery fee", "small fee", "amount", "invoice"
+]
+
+CURRENCY_WORDS = [
+    "aed", "dhs", "dirham", "dirhams", "aed.", "aed ", "dh", "dhs "
+]
+
 
 import re
 from typing import Optional
+from urllib.parse import urlparse
 
 
 def _fix_ocr_urls(text: str) -> str:
@@ -143,6 +167,95 @@ def _check_grammar_issues(text: str) -> tuple[bool, list[str]]:
     return len(issues) > 0, issues
 
 
+def _normalize_url_candidate(u: str) -> str:
+    """Strip punctuation and fix common OCR errors in URLs."""
+    # Strip trailing punctuation
+    cleaned = u.rstrip('.,;:!?')
+    # Fix common OCR misreads (e.g., 'wi.' -> 'www.')
+    for wrong, correct in OCR_URL_FIXES:
+        pattern = rf'(?<![a-zA-Z]){re.escape(wrong)}'
+        cleaned = re.sub(pattern, correct, cleaned, flags=re.IGNORECASE)
+    return cleaned
+
+
+def _get_domain_and_path(u: str) -> tuple[str, str]:
+    """Parse URL to extract domain and path, ensuring scheme is present."""
+    url = u.strip()
+    # Ensure scheme for urlparse to work correctly
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+    return domain, path
+
+
+def url_risk_reasons(urls: list[str], brands: list[str]) -> tuple[int, list[str]]:
+    """
+    Analyze URLs for phishing risk indicators.
+
+    Args:
+        urls: List of URL strings to analyze
+        brands: List of brand names to check for look-alike domains
+
+    Returns:
+        Tuple of (extra_score, reasons_list)
+        - extra_score: Risk score capped at 25
+        - reasons: List of human-readable risk reasons
+    """
+    extra_score = 0
+    reasons = []
+
+    for url in urls:
+        normalized = _normalize_url_candidate(url)
+        domain, path = _get_domain_and_path(normalized)
+
+        # a) Shortened links -> +15
+        for shortener in SHORTENERS:
+            if domain == shortener or domain.endswith('.' + shortener):
+                extra_score += 15
+                reasons.append(f"Shortened link detected: {shortener}")
+                break
+
+        # b) Suspicious TLDs -> +10
+        for tld in SUSPICIOUS_TLDS:
+            if domain.endswith(tld):
+                extra_score += 10
+                reasons.append(f"Suspicious TLD: {tld}")
+                break
+
+        # c) verify/login/update keywords in path -> +10
+        for keyword in URL_PATH_KEYWORDS:
+            if keyword in path:
+                extra_score += 10
+                reasons.append(f"Suspicious keyword in path: {keyword}")
+                break
+
+        # d) Look-alike domains: brand appears in domain with hyphen(s) -> +10
+        for brand in brands:
+            brand_lower = brand.lower().replace(' ', '')
+            if brand_lower in domain and '-' in domain:
+                extra_score += 10
+                reasons.append(f"Possible brand impersonation: {brand} with hyphens")
+                break
+
+        # e) Many hyphens (>=2) -> +5
+        hyphen_count = domain.count('-')
+        if hyphen_count >= 2:
+            extra_score += 5
+            reasons.append(f"Multiple hyphens in domain ({hyphen_count})")
+
+        # f) Long domain length (>=28) -> +5
+        if len(domain) >= 28:
+            extra_score += 5
+            reasons.append(f"Unusually long domain ({len(domain)} chars)")
+
+    # Cap total extra score at 25
+    capped_score = min(extra_score, 25)
+
+    return capped_score, reasons
+
+
 def analyze_text(
     text: str,
     urls: Optional[list[str]] = None
@@ -210,6 +323,21 @@ def analyze_text(
     if has_url:
         reasons.append(f"Contains URL(s): {', '.join(extracted_urls[:2])}")
     
+    # A) Fee bait detection
+    fee_matches = _find_matches(text, FEE_WORDS)
+    currency_matches = _find_matches(text, CURRENCY_WORDS)
+    # Check for money-looking numbers (e.g., 7.50, 12.99)
+    money_pattern = re.search(r'\b\d+\.\d{2}\b', text)
+    has_fee_bait = len(fee_matches) > 0 and (len(currency_matches) > 0 or money_pattern is not None)
+    if has_fee_bait:
+        reasons.append("Fee/payment pressure detected (common delivery scam tactic).")
+    
+    # B) URL plausibility heuristics
+    url_bonus, url_reasons = url_risk_reasons(extracted_urls, BRANDS_UAE)
+    url_suspicious = len(url_reasons) > 0
+    if url_suspicious:
+        reasons.extend(url_reasons)
+    
     features = {
         "urgency": has_urgency,
         "credential_request": has_credential,
@@ -218,6 +346,9 @@ def analyze_text(
         "reward_bait": has_reward,
         "grammar_issues": has_grammar,
         "has_url": has_url,
+        "fee_bait": has_fee_bait,
+        "url_bonus": url_bonus,
+        "url_suspicious": url_suspicious,
     }
     
     return features, reasons, extracted_urls

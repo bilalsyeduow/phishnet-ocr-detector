@@ -42,8 +42,24 @@ if uploaded_file is not None:
 
         st.divider()
 
-        # Risk score display
+        # Traffic Light Warning
         score = result["risk_score"]
+        if score <= 30:
+            traffic_emoji = "🟢"
+            traffic_msg = "Safe – No strong phishing indicators."
+            st.success(f"{traffic_emoji} **{traffic_msg}**")
+        elif score <= 60:
+            traffic_emoji = "🟡"
+            traffic_msg = "Suspicious – Verify before clicking or paying."
+            st.warning(f"{traffic_emoji} **{traffic_msg}**")
+        else:
+            traffic_emoji = "🔴"
+            traffic_msg = "High Risk – Likely phishing. Do not click links or share info."
+            st.error(f"{traffic_emoji} **{traffic_msg}**")
+
+        st.divider()
+
+        # Risk score display
         label = result["label"]
         confidence = result["confidence"]
 
