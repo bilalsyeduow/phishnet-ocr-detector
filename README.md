@@ -165,3 +165,5 @@ def check_image_for_phishing(image_path: str) -> dict:
 **Sanaullah Bilal Syed** (7598063)
 Member 3 – Image Phishing Detection
 PhishNet Project
+```
+---
