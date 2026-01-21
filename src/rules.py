@@ -24,50 +24,33 @@ REWARDS = [
     "selected winner", "congratulations"
 ]
 
-# Common OCR errors in URLs (order matters - longer patterns first)
 OCR_URL_FIXES = [
-    ("wwvv.", "www."),
-    ("vvww.", "www."),
-    ("vvvvw.", "www."),
-    ("wi.", "www."),   # Common OCR misread
-    ("ww.", "www."),   # Missing 'w'
-    ("htpps://", "https://"),
-    ("htrps://", "https://"),
-    ("hnps://", "https://"),
-    ("htpp://", "http://"),
+    ("wwvv.", "www."), ("vvww.", "www."), ("vvvvw.", "www."), ("wi.", "www."),
+    ("ww.", "www."), ("htpps://", "https://"), ("htrps://", "https://"),
+    ("hnps://", "https://"), ("htpp://", "http://"),
 ]
 
-# Short brand names that need word boundary matching
 SHORT_BRANDS = {"du", "rta", "fab", "moi", "dhl"}
 
-# Grammar/slang indicators
 SLANG_PATTERNS = [
     "ur", "u r", "acc", "acct", "plz", "pls", "dont", "wont", "cant",
     "asap", "b4", "2day", "4u", "cuz", "bcuz", "thru"
 ]
 
-# --- URL / domain heuristics (modern phishing) ---
 URL_PATH_KEYWORDS = [
     "verify", "login", "update", "confirm", "secure", "account", "payment", "unlock"
 ]
 
-SUSPICIOUS_TLDS = [
-    ".xyz", ".top", ".site", ".click", ".icu", ".monster", ".zip", ".mov"
-]
+SUSPICIOUS_TLDS = [".xyz", ".top", ".site", ".click", ".icu", ".monster", ".zip", ".mov"]
 
-SHORTENERS = [
-    "bit.ly", "tinyurl.com", "t.co", "cutt.ly", "rebrand.ly", "is.gd", "rb.gy"
-]
+SHORTENERS = ["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "rebrand.ly", "is.gd", "rb.gy"]
 
-# --- Money/fee bait (very common in delivery scams) ---
 FEE_WORDS = [
     "fee", "payment", "pay", "charged", "charge", "re-delivery", "redelivery",
     "delivery fee", "small fee", "amount", "invoice"
 ]
 
-CURRENCY_WORDS = [
-    "aed", "dhs", "dirham", "dirhams", "aed.", "aed ", "dh", "dhs "
-]
+CURRENCY_WORDS = ["aed", "dhs", "dirham", "dirhams", "aed.", "aed ", "dh", "dhs "]
 
 
 import re
@@ -75,55 +58,45 @@ from typing import Optional
 from urllib.parse import urlparse
 
 
-def _fix_ocr_urls(text: str) -> str:
+def _fix_ocr_urls(text):
     """Fix common OCR errors in URLs."""
     fixed = text
     
-    # First, handle OCR errors with spaces between prefix and URL
-    # These patterns catch "wi. domain.com" -> "www.domain.com" etc.
+    # handles cases where OCR adds spaces after www prefix
     space_fixes = [
-        (r'(?<![a-zA-Z])vvww\.\s+', 'www.'),   # "vvww. " -> "www."
-        (r'(?<![a-zA-Z])wwvv\.\s+', 'www.'),   # "wwvv. " -> "www."
-        (r'(?<![a-zA-Z])vvvvw\.\s+', 'www.'),  # "vvvvw. " -> "www."
-        (r'(?<![a-zA-Z])www\.\s+', 'www.'),    # "www. " -> "www."
-        (r'(?<![a-zA-Z])ww\.\s+', 'www.'),     # "ww. " -> "www."
-        (r'(?<![a-zA-Z])wi\.\s+', 'www.'),     # "wi. " -> "www."
-        (r'(?<![a-zA-Z])w\.\s+', 'www.'),      # "w. " -> "www."
+        (r'(?<![a-zA-Z])vvww\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])wwvv\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])vvvvw\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])www\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])ww\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])wi\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])w\.\s+', 'www.'),
     ]
     for pattern, replacement in space_fixes:
         fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
     
-    # Then apply the standard OCR fixes (without spaces)
     for wrong, correct in OCR_URL_FIXES:
-        # Use word boundary to avoid replacing within already-correct URLs
-        # e.g., don't match 'ww.' inside 'www.'
         pattern = rf'(?<![a-zA-Z]){re.escape(wrong)}'
         fixed = re.sub(pattern, correct, fixed, flags=re.IGNORECASE)
     return fixed
 
 
-def _extract_urls(text: str) -> list[str]:
+def _extract_urls(text):
     """Extract URLs and domains from text."""
     fixed_text = _fix_ocr_urls(text)
     
-    # Pattern for full URLs (http/https or www.)
     url_pattern = r'https?://[^\s<>"\')\]]+|www\.[^\s<>"\')\]]+'
-    # Pattern for domain-like strings with proper TLD (e.g., example.com, bit.ly/xxx)
-    # Requires a recognizable TLD pattern
     domain_pattern = r'\b[a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\.(?:com|net|org|io|ly|co|me|info|biz|ae|uk|de|fr|ru|cn|xyz|online|site|app|dev)(?:/[^\s<>"\')\]]*)?'
     
     urls = []
     
-    # Find full URLs first (higher priority)
     for match in re.findall(url_pattern, fixed_text, re.IGNORECASE):
         cleaned = match.rstrip('.,;:')
         if cleaned not in urls:
             urls.append(cleaned)
     
-    # Find domain patterns
     for match in re.findall(domain_pattern, fixed_text, re.IGNORECASE):
         cleaned = match.rstrip('.,;:')
-        # Skip if it's already a substring of an existing URL
         if not any(cleaned in existing_url for existing_url in urls):
             if cleaned not in urls:
                 urls.append(cleaned)
@@ -131,19 +104,12 @@ def _extract_urls(text: str) -> list[str]:
     return urls
 
 
-def _find_matches(text: str, keywords: list[str], use_word_boundary: bool = False) -> list[str]:
-    """Find keywords that match in text (case-insensitive).
-    
-    Args:
-        text: Text to search in
-        keywords: List of keywords to find
-        use_word_boundary: If True, use word boundaries for short keywords
-    """
+def _find_matches(text, keywords, use_word_boundary=False):
+    """Find keywords that match in text (case-insensitive)."""
     text_lower = text.lower()
     matches = []
     for kw in keywords:
         kw_lower = kw.lower()
-        # Use word boundary for short keywords to avoid false positives
         if use_word_boundary and kw_lower in SHORT_BRANDS:
             pattern = rf'\b{re.escape(kw_lower)}\b'
             if re.search(pattern, text_lower):
@@ -153,26 +119,23 @@ def _find_matches(text: str, keywords: list[str], use_word_boundary: bool = Fals
     return matches
 
 
-def _check_grammar_issues(text: str) -> tuple[bool, list[str]]:
+def _check_grammar_issues(text):
     """Check for grammar issues: excessive punctuation, ALL CAPS, slang."""
     issues = []
     
-    # Check for excessive exclamation marks
     exclamation_count = text.count('!')
     if exclamation_count >= 3:
         issues.append(f"excessive exclamation marks ({exclamation_count})")
     
-    # Check for ALL CAPS words (at least 4 chars to avoid acronyms)
+    # 4+ chars to avoid matching acronyms like "USA"
     words = re.findall(r'\b[A-Z]{4,}\b', text)
     caps_words = [w for w in words if not w.isdigit()]
     if len(caps_words) >= 2:
         issues.append(f"ALL CAPS words: {', '.join(caps_words[:3])}")
     
-    # Check for slang patterns
     text_lower = text.lower()
     found_slang = []
     for slang in SLANG_PATTERNS:
-        # Use word boundary check for short patterns
         pattern = rf'\b{re.escape(slang)}\b'
         if re.search(pattern, text_lower):
             found_slang.append(slang)
@@ -183,35 +146,31 @@ def _check_grammar_issues(text: str) -> tuple[bool, list[str]]:
     return len(issues) > 0, issues
 
 
-def _normalize_url_candidate(u: str) -> str:
+def _normalize_url_candidate(u):
     """Strip punctuation and fix common OCR errors in URLs."""
-    # Strip trailing punctuation
     cleaned = u.rstrip('.,;:!?')
     
-    # First, handle OCR errors with spaces between prefix and URL
     space_fixes = [
-        (r'(?<![a-zA-Z])vvww\.\s+', 'www.'),   # "vvww. " -> "www."
-        (r'(?<![a-zA-Z])wwvv\.\s+', 'www.'),   # "wwvv. " -> "www."
-        (r'(?<![a-zA-Z])vvvvw\.\s+', 'www.'),  # "vvvvw. " -> "www."
-        (r'(?<![a-zA-Z])www\.\s+', 'www.'),    # "www. " -> "www."
-        (r'(?<![a-zA-Z])ww\.\s+', 'www.'),     # "ww. " -> "www."
-        (r'(?<![a-zA-Z])wi\.\s+', 'www.'),     # "wi. " -> "www."
-        (r'(?<![a-zA-Z])w\.\s+', 'www.'),      # "w. " -> "www."
+        (r'(?<![a-zA-Z])vvww\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])wwvv\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])vvvvw\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])www\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])ww\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])wi\.\s+', 'www.'),
+        (r'(?<![a-zA-Z])w\.\s+', 'www.'),
     ]
     for pattern, replacement in space_fixes:
         cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
     
-    # Then apply the standard OCR fixes (without spaces)
     for wrong, correct in OCR_URL_FIXES:
         pattern = rf'(?<![a-zA-Z]){re.escape(wrong)}'
         cleaned = re.sub(pattern, correct, cleaned, flags=re.IGNORECASE)
     return cleaned
 
 
-def _get_domain_and_path(u: str) -> tuple[str, str]:
-    """Parse URL to extract domain and path, ensuring scheme is present."""
+def _get_domain_and_path(u):
+    """Parse URL to extract domain and path."""
     url = u.strip()
-    # Ensure scheme for urlparse to work correctly
     if not url.startswith(('http://', 'https://')):
         url = 'https://' + url
     parsed = urlparse(url)
@@ -221,18 +180,7 @@ def _get_domain_and_path(u: str) -> tuple[str, str]:
 
 
 def url_risk_reasons(urls: list[str], brands: list[str]) -> tuple[int, list[str]]:
-    """
-    Analyze URLs for phishing risk indicators.
-
-    Args:
-        urls: List of URL strings to analyze
-        brands: List of brand names to check for look-alike domains
-
-    Returns:
-        Tuple of (extra_score, reasons_list)
-        - extra_score: Risk score capped at 25
-        - reasons: List of human-readable risk reasons
-    """
+    """Analyze URLs for phishing risk indicators, returns (score, reasons)."""
     extra_score = 0
     reasons = []
 
@@ -240,28 +188,24 @@ def url_risk_reasons(urls: list[str], brands: list[str]) -> tuple[int, list[str]
         normalized = _normalize_url_candidate(url)
         domain, path = _get_domain_and_path(normalized)
 
-        # a) Shortened links -> +15
         for shortener in SHORTENERS:
             if domain == shortener or domain.endswith('.' + shortener):
                 extra_score += 15
                 reasons.append(f"Shortened link detected: {shortener}")
                 break
 
-        # b) Suspicious TLDs -> +10
         for tld in SUSPICIOUS_TLDS:
             if domain.endswith(tld):
                 extra_score += 10
                 reasons.append(f"Suspicious TLD: {tld}")
                 break
 
-        # c) verify/login/update keywords in path -> +10
         for keyword in URL_PATH_KEYWORDS:
             if keyword in path:
                 extra_score += 10
                 reasons.append(f"Suspicious keyword in path: {keyword}")
                 break
 
-        # d) Look-alike domains: brand appears in domain with hyphen(s) -> +10
         for brand in brands:
             brand_lower = brand.lower().replace(' ', '')
             if brand_lower in domain and '-' in domain:
@@ -269,19 +213,16 @@ def url_risk_reasons(urls: list[str], brands: list[str]) -> tuple[int, list[str]
                 reasons.append(f"Possible brand impersonation: {brand} with hyphens")
                 break
 
-        # e) Many hyphens (>=2) -> +5
         hyphen_count = domain.count('-')
         if hyphen_count >= 2:
             extra_score += 5
             reasons.append(f"Multiple hyphens in domain ({hyphen_count})")
 
-        # f) Long domain length (>=28) -> +5
         if len(domain) >= 28:
             extra_score += 5
             reasons.append(f"Unusually long domain ({len(domain)} chars)")
 
-    # Cap total extra score at 25
-    capped_score = min(extra_score, 25)
+    capped_score = min(extra_score, 25)  # cap seems to work well
 
     return capped_score, reasons
 
@@ -290,79 +231,56 @@ def analyze_text(
     text: str,
     urls: Optional[list[str]] = None
 ) -> tuple[dict, list[str], list[str]]:
-    """
-    Analyze text for phishing indicators.
-    
-    Args:
-        text: The text content to analyze (e.g., from OCR)
-        urls: Optional list of URLs. If None, extracts from text.
-    
-    Returns:
-        Tuple of (features_dict, reasons_list, urls_list)
-        - features: dict with boolean flags for each indicator
-        - reasons: list of human-readable reasons with matched keywords
-        - urls: list of URLs found or provided
-    """
+    """Analyze text for phishing indicators, returns (features, reasons, urls)."""
     reasons = []
     
-    # Extract or use provided URLs
     extracted_urls = urls if urls is not None else _extract_urls(text)
     
-    # Check urgency
     urgency_matches = _find_matches(text, URGENCY)
     has_urgency = len(urgency_matches) > 0
     if has_urgency:
         top_matches = urgency_matches[:3]
         reasons.append(f"Urgency language: {', '.join(top_matches)}")
     
-    # Check credential requests
     credential_matches = _find_matches(text, CREDENTIAL)
     has_credential = len(credential_matches) > 0
     if has_credential:
         top_matches = credential_matches[:3]
         reasons.append(f"Credential request: {', '.join(top_matches)}")
     
-    # Check brand mentions (use word boundary for short names like "du")
     brand_matches = _find_matches(text, BRANDS_UAE, use_word_boundary=True)
     has_brand = len(brand_matches) > 0
     if has_brand:
         top_matches = brand_matches[:2]
         reasons.append(f"Brand mentioned: {', '.join(top_matches)}")
     
-    # Check threat language
     threat_matches = _find_matches(text, THREATS)
     has_threat = len(threat_matches) > 0
     if has_threat:
         top_matches = threat_matches[:2]
         reasons.append(f"Threat language: {', '.join(top_matches)}")
     
-    # Check reward bait
     reward_matches = _find_matches(text, REWARDS)
     has_reward = len(reward_matches) > 0
     if has_reward:
         top_matches = reward_matches[:2]
         reasons.append(f"Reward/prize bait: {', '.join(top_matches)}")
     
-    # Check grammar issues
     has_grammar, grammar_reasons = _check_grammar_issues(text)
     if has_grammar:
         reasons.append(f"Grammar issues: {'; '.join(grammar_reasons[:2])}")
     
-    # Check for URLs
     has_url = len(extracted_urls) > 0
     if has_url:
         reasons.append(f"Contains URL(s): {', '.join(extracted_urls[:2])}")
     
-    # A) Fee bait detection
     fee_matches = _find_matches(text, FEE_WORDS)
     currency_matches = _find_matches(text, CURRENCY_WORDS)
-    # Check for money-looking numbers (e.g., 7.50, 12.99)
     money_pattern = re.search(r'\b\d+\.\d{2}\b', text)
     has_fee_bait = len(fee_matches) > 0 and (len(currency_matches) > 0 or money_pattern is not None)
     if has_fee_bait:
         reasons.append("Fee/payment pressure detected (common delivery scam tactic).")
     
-    # B) URL plausibility heuristics
     url_bonus, url_reasons = url_risk_reasons(extracted_urls, BRANDS_UAE)
     url_suspicious = len(url_reasons) > 0
     if url_suspicious:
@@ -382,37 +300,3 @@ def analyze_text(
     }
     
     return features, reasons, extracted_urls
-
-
-if __name__ == "__main__":
-    # Test cases
-    test_texts = [
-        # Phishing-like message
-        """URGENT! Your Emirates NBD account has been suspended!
-        Verify ur acc immediately or it will be terminated.
-        Click here: wi.emirates-nbd-secure.com/verify
-        Act now to avoid losing access!!!""",
-        
-        # Reward scam
-        """Congratulations! You've won a FREE iPhone 14!
-        Claim your prize now at bit.ly/free-prize
-        Enter ur credit card for shipping only.""",
-        
-        # Clean text
-        """Hello, this is a reminder about your scheduled appointment
-        tomorrow at 2pm. Please let us know if you need to reschedule.""",
-    ]
-    
-    for i, text in enumerate(test_texts, 1):
-        print(f"\n{'='*60}")
-        print(f"TEST {i}:")
-        print(f"{'='*60}")
-        print(f"Text preview: {text[:80]}...")
-        
-        features, reasons, urls = analyze_text(text)
-        
-        print(f"\nFeatures: {features}")
-        print(f"\nReasons ({len(reasons)}):")
-        for reason in reasons:
-            print(f"  - {reason}")
-        print(f"\nURLs found: {urls}")

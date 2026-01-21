@@ -1,11 +1,8 @@
-"""
-Pipeline module that orchestrates OCR, rules analysis, and scoring.
-"""
+"""Pipeline module that orchestrates OCR, rules analysis, and scoring."""
 
 import sys
 from pathlib import Path
 
-# Support running as both `python src/pipeline.py` and `python -m src.pipeline`
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -17,27 +14,10 @@ from src.scoring import score_risk
 
 
 def analyze_image(image: Image.Image) -> dict:
-    """
-    Analyze a PIL Image for phishing indicators.
-    
-    Args:
-        image: PIL Image object to analyze.
-    
-    Returns:
-        Dictionary containing:
-        - risk_score: int (0-100)
-        - label: str ("Phishing", "Suspicious", "Safe", or "Unknown")
-        - confidence: str ("High", "Medium", or "Low")
-        - reasons: list[str] of human-readable indicators
-        - urls: list[str] of URLs found in the image
-        - extracted_text: str full OCR text
-        - extracted_text_preview: str first 400 characters
-    """
-    # Step 1: OCR - Extract text from image
+    """Analyze a PIL Image for phishing indicators."""
     try:
         extracted_text = extract_text(image)
     except Exception as e:
-        # Handle corrupt or unprocessable images
         return {
             "risk_score": 0,
             "label": "Unknown",
@@ -48,7 +28,6 @@ def analyze_image(image: Image.Image) -> dict:
             "extracted_text_preview": "",
         }
     
-    # Handle empty OCR result
     if not extracted_text.strip():
         return {
             "risk_score": 0,
@@ -60,13 +39,10 @@ def analyze_image(image: Image.Image) -> dict:
             "extracted_text_preview": "",
         }
     
-    # Step 2: Rules - Analyze text for phishing indicators
     features, reasons, urls = analyze_text(extracted_text)
-    
-    # Step 3: Scoring - Calculate risk score
     risk_score, label, confidence = score_risk(features)
     
-    # Build preview (first 400 chars)
+    # 400 chars is usually enough for a preview
     extracted_text_preview = extracted_text[:400]
     
     return {
@@ -81,19 +57,7 @@ def analyze_image(image: Image.Image) -> dict:
 
 
 def analyze_image_path(path: str) -> dict:
-    """
-    Analyze an image file for phishing indicators.
-    
-    Args:
-        path: Path to the image file.
-    
-    Returns:
-        Dictionary containing analysis results (same as analyze_image).
-    
-    Raises:
-        FileNotFoundError: If the image file does not exist.
-        PIL.UnidentifiedImageError: If the file is not a valid image.
-    """
+    """Analyze an image file for phishing indicators."""
     image = Image.open(path)
     return analyze_image(image)
 
