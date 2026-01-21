@@ -26,7 +26,7 @@ def analyze_image(image: Image.Image) -> dict:
     Returns:
         Dictionary containing:
         - risk_score: int (0-100)
-        - label: str ("Phishing", "Suspicious", or "Safe")
+        - label: str ("Phishing", "Suspicious", "Safe", or "Unknown")
         - confidence: str ("High", "Medium", or "Low")
         - reasons: list[str] of human-readable indicators
         - urls: list[str] of URLs found in the image
@@ -34,13 +34,25 @@ def analyze_image(image: Image.Image) -> dict:
         - extracted_text_preview: str first 400 characters
     """
     # Step 1: OCR - Extract text from image
-    extracted_text = extract_text(image)
+    try:
+        extracted_text = extract_text(image)
+    except Exception as e:
+        # Handle corrupt or unprocessable images
+        return {
+            "risk_score": 0,
+            "label": "Unknown",
+            "confidence": "Low",
+            "reasons": [f"Failed to process image: {str(e)}"],
+            "urls": [],
+            "extracted_text": "",
+            "extracted_text_preview": "",
+        }
     
     # Handle empty OCR result
     if not extracted_text.strip():
         return {
-            "risk_score": 50,
-            "label": "Suspicious",
+            "risk_score": 0,
+            "label": "Unknown",
             "confidence": "Low",
             "reasons": ["No text could be extracted from the image (OCR returned empty)"],
             "urls": [],

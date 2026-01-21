@@ -14,7 +14,6 @@ FEATURE_WEIGHTS = {
     "grammar_issues": 10,
     "has_url": 10,
     "fee_bait": 10,
-    "url_suspicious": 10,
 }
 
 # Risk level thresholds
@@ -60,10 +59,13 @@ def score_risk(features: dict) -> Tuple[int, str, str]:
     else:
         label = "Safe"
     
-    # Determine confidence based on number of active features
-    if active_features >= 4:
+    # Determine confidence based on both score and active features
+    # High: strong score with multiple indicators, or very high score
+    # Medium: moderate score with some indicators
+    # Low: weak evidence overall
+    if (score >= THRESHOLDS["high"] and active_features >= 3) or score >= 80:
         confidence = "High"
-    elif active_features >= 2:
+    elif (score >= THRESHOLDS["medium"] and active_features >= 2) or active_features >= 3:
         confidence = "Medium"
     else:
         confidence = "Low"

@@ -3,20 +3,32 @@ OCR module using Tesseract via pytesseract for text extraction from images.
 """
 
 import platform
+import shutil
 from PIL import Image
 
 import pytesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # ============================================================================
-# TESSERACT CONFIGURATION - Edit the path below if Tesseract is installed elsewhere
+# TESSERACT CONFIGURATION
 # ============================================================================
+# Windows fallback path (edit if Tesseract is installed elsewhere)
 TESSERACT_CMD_WINDOWS = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 # ============================================================================
 
-# Set Tesseract path on Windows
-if platform.system() == "Windows":
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD_WINDOWS
+
+def _configure_tesseract() -> None:
+    """Configure Tesseract path based on the operating system."""
+    # Try to find tesseract in PATH (works on Mac/Linux, may work on Windows)
+    tesseract_path = shutil.which("tesseract")
+    
+    if tesseract_path:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_path
+    elif platform.system() == "Windows":
+        # Windows fallback to common install location
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD_WINDOWS
+
+
+_configure_tesseract()
 
 
 def _preprocess_image(image: Image.Image) -> Image.Image:

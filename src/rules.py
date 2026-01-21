@@ -78,6 +78,22 @@ from urllib.parse import urlparse
 def _fix_ocr_urls(text: str) -> str:
     """Fix common OCR errors in URLs."""
     fixed = text
+    
+    # First, handle OCR errors with spaces between prefix and URL
+    # These patterns catch "wi. domain.com" -> "www.domain.com" etc.
+    space_fixes = [
+        (r'(?<![a-zA-Z])vvww\.\s+', 'www.'),   # "vvww. " -> "www."
+        (r'(?<![a-zA-Z])wwvv\.\s+', 'www.'),   # "wwvv. " -> "www."
+        (r'(?<![a-zA-Z])vvvvw\.\s+', 'www.'),  # "vvvvw. " -> "www."
+        (r'(?<![a-zA-Z])www\.\s+', 'www.'),    # "www. " -> "www."
+        (r'(?<![a-zA-Z])ww\.\s+', 'www.'),     # "ww. " -> "www."
+        (r'(?<![a-zA-Z])wi\.\s+', 'www.'),     # "wi. " -> "www."
+        (r'(?<![a-zA-Z])w\.\s+', 'www.'),      # "w. " -> "www."
+    ]
+    for pattern, replacement in space_fixes:
+        fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+    
+    # Then apply the standard OCR fixes (without spaces)
     for wrong, correct in OCR_URL_FIXES:
         # Use word boundary to avoid replacing within already-correct URLs
         # e.g., don't match 'ww.' inside 'www.'
@@ -171,7 +187,21 @@ def _normalize_url_candidate(u: str) -> str:
     """Strip punctuation and fix common OCR errors in URLs."""
     # Strip trailing punctuation
     cleaned = u.rstrip('.,;:!?')
-    # Fix common OCR misreads (e.g., 'wi.' -> 'www.')
+    
+    # First, handle OCR errors with spaces between prefix and URL
+    space_fixes = [
+        (r'(?<![a-zA-Z])vvww\.\s+', 'www.'),   # "vvww. " -> "www."
+        (r'(?<![a-zA-Z])wwvv\.\s+', 'www.'),   # "wwvv. " -> "www."
+        (r'(?<![a-zA-Z])vvvvw\.\s+', 'www.'),  # "vvvvw. " -> "www."
+        (r'(?<![a-zA-Z])www\.\s+', 'www.'),    # "www. " -> "www."
+        (r'(?<![a-zA-Z])ww\.\s+', 'www.'),     # "ww. " -> "www."
+        (r'(?<![a-zA-Z])wi\.\s+', 'www.'),     # "wi. " -> "www."
+        (r'(?<![a-zA-Z])w\.\s+', 'www.'),      # "w. " -> "www."
+    ]
+    for pattern, replacement in space_fixes:
+        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+    
+    # Then apply the standard OCR fixes (without spaces)
     for wrong, correct in OCR_URL_FIXES:
         pattern = rf'(?<![a-zA-Z]){re.escape(wrong)}'
         cleaned = re.sub(pattern, correct, cleaned, flags=re.IGNORECASE)
