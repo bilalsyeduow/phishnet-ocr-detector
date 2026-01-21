@@ -77,3 +77,6 @@ if __name__ == "__main__":
         print(f"Error: Image file not found: {test_image_path}")
     except Exception as e:
         print(f"Error analyzing image: {e}")
+
+
+
